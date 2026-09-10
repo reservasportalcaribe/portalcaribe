@@ -1,0 +1,11 @@
+REGLA FIJA DE PORTAL CARIBE
+
+TOTAL PORTAL CARIBE =
+SUMA REAL DE TODAS LAS NOCHES SEGÚN TARIFARIO ROYAL ELITE
++ USD 1.000
+
+IMPORTANTE:
+- Los USD 1.000 se suman UNA SOLA VEZ por operación.
+- NO se suman USD 1.000 por noche.
+- El cálculo debe sumar noche por noche según la tarifa real vigente de cada fecha.
+- Si una fecha no está cargada en el tarifario, el cotizador debe bloquearse y pedir confirmación manual.

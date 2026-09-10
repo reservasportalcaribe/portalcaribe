@@ -1,0 +1,16 @@
+PORTAL CARIBE V5
+
+Esta versión corrige la auditoría:
+- Ya NO toma solo fecha mínima/máxima.
+- Controla mes por mes y día por día.
+- Marca COMPLETO / INCOMPLETO / FALTANTE.
+- Bloquea conceptualmente cualquier período no respaldado por fechas realmente detectadas.
+- Fija la regla comercial:
+  TOTAL = SUMA DE NOCHES ROYAL ELITE + USD 1.000 por operación.
+
+Para usarla:
+1. Reemplazá en GitHub los archivos package.json, netlify.toml y build.mjs por los de esta carpeta.
+2. Subí también REGLA_COTIZADOR.txt y LEEME_V5.txt.
+3. Hacé Commit changes.
+4. Netlify redeploya automáticamente.
+5. Abrí /auditoria-v5.html
