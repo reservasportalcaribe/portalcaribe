@@ -1,0 +1,9 @@
+{
+  "name": "portal-caribe-clon-independiente",
+  "version": "4.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs"
+  }
+}

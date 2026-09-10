@@ -1,0 +1,7 @@
+CONTROL DE COTIZADOR
+- Se conserva el cotizador original de Portal Caribe.
+- No se reemplazan tarifas diarias por promedios.
+- No se ofrecen categorías Platinum como parte de Black.
+- La reserva siempre queda sujeta a disponibilidad/confirmación Royal Elite.
+- Auditoría automática: /auditoria-tarifas.html
+- Objetivo de cobertura: hasta 31/08/2027.

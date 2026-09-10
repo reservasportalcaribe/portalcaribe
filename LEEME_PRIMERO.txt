@@ -1,0 +1,48 @@
+PORTAL CARIBE — CLON INDEPENDIENTE V4
+=====================================
+
+ESTA ES LA VERSIÓN QUE TENÉS QUE USAR.
+
+Qué hace:
+- Copia el sitio Portal Caribe ACTUAL en el primer build.
+- Conserva el HTML/CSS/JS original, por lo que no vuelve a diseñar la página desde cero.
+- Copia todas las imágenes, videos, fuentes y assets del mismo sitio que pueda localizar.
+- Descarga también imágenes/videos externos referenciados directamente por la web.
+- Reescribe las referencias para que el sitio publicado se sirva desde Netlify.
+- CONSERVA EL COTIZADOR ORIGINAL de tu web, en vez de reemplazarlo por una aproximación.
+- Genera una auditoría automática de las fechas encontradas en el tarifario.
+- Revisa que no queden referencias de ejecución a chatgpt.site.
+
+IMPORTANTE
+No uses "Deploy manually" con este ZIP. El proyecto necesita ejecutar el build una vez para copiar
+todos los recursos.
+
+PASOS
+1. Descomprimí este ZIP.
+2. Creá un repositorio gratis en GitHub llamado, por ejemplo, portal-caribe.
+3. Subí TODO el contenido de la carpeta portal_caribe_clon_independiente_v4.
+4. En Netlify: Add new project > Import an existing project > GitHub.
+5. Elegí ese repositorio.
+6. Netlify leerá netlify.toml automáticamente:
+   Build command: npm run build
+   Publish directory: dist
+7. Deploy.
+8. Cuando termine, abrí:
+   https://TU-SITIO.netlify.app/auditoria-tarifas.html
+9. Ahí vas a ver:
+   - si quedó alguna dependencia de chatgpt.site;
+   - hasta qué fecha detectó tarifas;
+   - cuántos archivos y medios quedaron copiados.
+
+POR QUÉ ESTA VERSIÓN ES MEJOR
+El cotizador que ya está publicado en Portal Caribe dice “Cargando tarifas…” y limita las fechas
+al tarifario cargado. Esta versión conserva ESE código y sus datos, de modo que no sustituye tarifas
+diarias por promedios ni por una tabla inventada.
+
+Si la auditoría muestra una fecha máxima menor a 2027-08-31, NO hay que inventar agosto:
+eso significa que el bundle que se copió no contiene esas fechas de forma detectable o que falta
+un archivo de tarifas. En ese caso se agrega el archivo fuente exacto y listo.
+
+CONTACTO DEL SITIO
+reservasportalcaribe@gmail.com
+WhatsApp: 11 5795-6362
