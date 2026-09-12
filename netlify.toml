@@ -4,3 +4,11 @@ publish = "dist"
 
 [build.environment]
 NODE_VERSION = "20"
+
+[functions]
+directory = "netlify/functions"
+
+[[redirects]]
+from = "/api/consultas"
+to = "/.netlify/functions/consultas"
+status = 200
