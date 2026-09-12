@@ -9,6 +9,9 @@ const DIST = path.resolve("dist");
 const START = "2026-08-20";
 const END = "2027-08-31";
 const PORTAL_MARGIN = 1000;
+const HOTFIX_VERSION = "5.1.0";
+const FETCH_TIMEOUT_MS = 15000;
+const EXTERNAL_FETCH_CONCURRENCY = 8;
 
 const queue=[ORIGIN+"/"], seen=new Set(), rewrite=new Map(), copied=[], failures=[], externalCopied=[];
 await fs.rm(DIST,{recursive:true,force:true});
@@ -37,7 +40,11 @@ function extFor(url,ct=""){
 function abs(raw,base){
   try{
     if(!raw||/^(?:data:|blob:|mailto:|tel:|javascript:|#)/i.test(raw))return null;
-    return new URL(raw,base).href;
+    const resolved=new URL(raw,base);
+    // Some minified strings are rediscovered with a spurious trailing slash.
+    // Normalize file-like paths so the crawler does not wait on guaranteed 404s.
+    if(/\.[a-z0-9]{1,6}\/$/i.test(resolved.pathname))resolved.pathname=resolved.pathname.slice(0,-1);
+    return resolved.href;
   }catch{return null}
 }
 function outPath(url,ct=""){
@@ -64,8 +71,8 @@ function refs(text,base){
   const found=new Set();
   const regexes=[
     /(?:src|href|poster|data-src|data-lazy-src)=["']([^"'<>]+)["']/gi,
-    /(?:srcset|data-srcset)=["']([^"']+)["']/gi,
-    /url\(\s*["']?([^)"']+)["']?\s*\)/gi,
+    /(>:srcset|data-srcset)=["']([^"']+)["']/gi,
+    /url\(\s*[#']?([^)"']+)["']?\s*\)/gi,
     /["'`](https?:\/\/[^"'`\s<>]+)["'`]/gi,
     /["'`](\/[^"'`\s<>]+)["'`]/gi
   ];
@@ -81,7 +88,7 @@ function refs(text,base){
   return [...found];
 }
 async function fetchBuf(url){
-  const r=await fetch(url,{redirect:"follow",headers:{"user-agent":"Mozilla/5.0 PortalCaribeV5"}});
+  const r=await fetch(url,{redirect:"follow",headers:{"user-agent":"Mozilla/5.0 PortalCaribeV5"},signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)});
   if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);
   return {buf:Buffer.from(await r.arrayBuffer()),ct:r.headers.get("content-type")||""};
 }
@@ -97,21 +104,41 @@ async function external(url){
     return rel;
   }catch(e){failures.push({url,error:e.message,kind:"external"});return null}
 }
+async function mapLimit(items,limit,fn){
+  let cursor=0;
+  const workers=Array.from({length:Math.min(limit,items.length)},async()=>{
+    while(cursor<items.length){
+      const item=items[cursor++];
+      await fn(item);
+    }
+  });
+  await Promise.all(workers);
+}
 async function crawl(url){
   if(seen.has(url))return; seen.add(url);
   try{
-    const r=await fetch(url,{redirect:"follow",headers:{"user-agent":"Mozilla/5.0 PortalCaribeV5"}});
+    const r=await fetch(url,{redirect:"follow",headers:{"user-agent":"Mozilla/5.0 PortalCaribeV5"},signal:AbortSignal.timeout(FETCH_TIMEOUT_MS)});
     if(!r.ok)throw new Error(`${r.status} ${r.statusText}`);
     const ct=r.headers.get("content-type")||"";
     let payload;
     if(textTypes.test(ct)){
       let text=await r.text();
+      const externalRefs=[];
       for(const ref of refs(text,url)){
         const u=new URL(ref);
         if(u.host===HOST){
+          // API routes belong to the original dynamic site and cannot be
+          // mirrored as static files. Netlify serves the local replacement.
+          if(u.pathname.startsWith("/api/"))continue;
+          const decodedPath=decodeURIComponent(u.pathname);
+          // The broad reference scanner can encounter code fragments inside
+          // minified JavaScript. Only crawl real files or explicit directories.
+          if(/[${}`(),]/.test(decodedPath))continue;
+          if(!decodedPath.endsWith("/")&&!/\.[a-z0-9]{1,6}$/i.test(decodedPath))continue;
           if(!seen.has(ref))queue.push(ref);
-        }else if(mediaExt.test(u.pathname+u.search)){await external(ref)}
+        }else if(mediaExt.test(u.pathname+u.search)){externalRefs.push(ref)}
       }
+      await mapLimit(externalRefs,EXTERNAL_FETCH_CONCURRENCY,external);
       text=text.replaceAll(ORIGIN,"");
       for(const [from,to] of rewrite)text=text.split(from).join(to);
       payload=Buffer.from(text,"utf8");
@@ -122,7 +149,11 @@ async function crawl(url){
     copied.push({url,file:path.relative(DIST,out),ct,bytes:payload.length});
   }catch(e){failures.push({url,error:e.message,kind:"same-origin"})}
 }
-while(queue.length)await crawl(queue.shift());
+while(queue.length){
+  const next=queue.shift();
+  if(process.env.DEBUG_CRAWL)console.log(`[crawl ${seen.size+1}] ${next}`);
+  await crawl(next);
+}
 
 async function walk(dir){
   let out=[]; for(const e of await fs.readdir(dir,{withFileTypes:true})){const p=path.join(dir,e.name); out.push(...(e.isDirectory()?await walk(p):[p]))}
@@ -131,11 +162,103 @@ async function walk(dir){
 let files=await walk(DIST);
 
 // second rewrite pass
+let pricingFeePatchCount=0;
+let exactTotalPatchCount=0;
 for(const f of files){
   if(/\.(?:html?|css|js|mjs|json|xml|svg|txt)$/i.test(f)){
     let t=await fs.readFile(f,"utf8").catch(()=>null); if(!t)continue;
     t=t.replaceAll(ORIGIN,""); for(const [from,to] of rewrite)t=t.split(from).join(to);
+
+    if(/TripCalculator-[^/]+\.js$/i.test(f)){
+      const feePattern=/function ([A-Za-z_$][\w$]*)\(e\)\{return e<7\?0:450\+Math\.max\(0,e-7\)\*60\}/g;
+      t=t.replace(feePattern,(_match,functionName)=>{
+        pricingFeePatchCount+=1;
+        return `function ${functionName}(e){return 0}`;
+      });
+
+      const exactTotalPattern=/total:([A-Za-z_$][\w$]*),low:([A-Za-z_$][\w$]*),high:([A-Za-z_$][\w$]*),publicMid:[A-Za-z_$][\w$]*\(\1,`up`\)/g;
+      t=t.replace(exactTotalPattern,(_match,total,low,high)=>{
+        exactTotalPatchCount+=1;
+        return `total:${total},low:${low},high:${high},publicMid:${total}`;
+      });
+    }
+
     await fs.writeFile(f,t);
+  }
+}
+
+if(pricingFeePatchCount!==1){
+  throw new Error(`Pricing hotfix expected 1 usage-fee match, found ${pricingFeePatchCount}`);
+}
+if(exactTotalPatchCount!==1){
+  throw new Error(`Pricing hotfix expected 1 rounded-total match, found ${exactTotalPatchCount}`);
+}
+
+// Mobile and scrolling hotfixes are kept separate from the mirrored CSS so
+// they remain easy to audit and do not depend on a generated asset hash.
+const hotfixCSS=`
+html {
+  scroll-behavior: auto !important;
+  overscroll-behavior-y: none;
+}
+body {
+  overflow-x: clip !important;
+  overscroll-behavior-y: none;
+}
+.photo-gallery-viewport,
+.photo-gallery-slide,
+.photo-gallery-image-button {
+  touch-action: pan-y pinch-zoom;
+}
+@media (max-width: 760px) {
+  body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-anchor: none;
+  }
+  .quote-section {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 32px !important;
+    padding: 80px 15px !important;
+  }
+  .quote-intro {
+    position: static !important;
+    top: auto !important;
+    padding-top: 0 !important;
+  }
+  .quote-shell {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 22px 16px !important;
+  }
+  .quote-fields,
+  .contact-fields {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .quote-shell input,
+  .quote-shell button[role="combobox"] {
+    max-width: 100% !important;
+  }
+  .request-actions {
+    flex-direction: column !important;
+  }
+  .request-actions button {
+    width: 100%;
+  }
+  .hero-portal {
+    transform: none !important;
+    transition: none !important;
+  }
+}
+`;
+await fs.writeFile(path.join(DIST,"portal-hotfix.css"),hotfixCSS);
+
+for(const f of files.filter(f=>/\.html?$/i.test(f))){
+  let html=await fs.readFile(f,"utf8").catch(()=>null); if(!html)continue;
+  if(!html.includes("/portal-hotfix.css")){
+    html=html.replace("</head>",`<link rel="stylesheet" href="/portal-hotfix.css?v=${HOTFIX_VERSION}"></head>`);
+    await fs.writeFile(f,html);
   }
 }
 
