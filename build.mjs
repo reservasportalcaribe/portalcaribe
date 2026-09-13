@@ -71,8 +71,8 @@ function refs(text,base){
   const found=new Set();
   const regexes=[
     /(?:src|href|poster|data-src|data-lazy-src)=["']([^"'<>]+)["']/gi,
-    /(>:srcset|data-srcset)=["']([^"']+)["']/gi,
-    /url\(\s*[#']?([^)"']+)["']?\s*\)/gi,
+    /(?:srcset|data-srcset)=["']([^"']+)["']/gi,
+    /url\(\s*["']?([^)"']+)["']?\s*\)/gi,
     /["'`](https?:\/\/[^"'`\s<>]+)["'`]/gi,
     /["'`](\/[^"'`\s<>]+)["'`]/gi
   ];
@@ -164,6 +164,10 @@ let files=await walk(DIST);
 // second rewrite pass
 let pricingFeePatchCount=0;
 let exactTotalPatchCount=0;
+let teenRatePatchCount=0;
+let teenCopyPatchCount=0;
+let dateDefaultsPatchCount=0;
+let dateInputPatchCount=0;
 for(const f of files){
   if(/\.(?:html?|css|js|mjs|json|xml|svg|txt)$/i.test(f)){
     let t=await fs.readFile(f,"utf8").catch(()=>null); if(!t)continue;
@@ -181,6 +185,33 @@ for(const f of files){
         exactTotalPatchCount+=1;
         return `total:${total},low:${low},high:${high},publicMid:${total}`;
       });
+
+      const teenRatePattern=/n>=13&&n<=17\?e===`playacar`&&[A-Za-z_$][\w$]*\(t,`2026-08-20`,`2026-10-31`\)\?\.5:\.85:1/g;
+      t=t.replace(teenRatePattern,()=>{
+        teenRatePatchCount+=1;
+        return "n>=13&&n<=17?.7:1";
+      });
+
+      const teenCopyFrom="el descuento depende del hotel y de la fecha confirmada.";
+      const teenCopyMatches=t.split(teenCopyFrom).length-1;
+      if(teenCopyMatches){
+        teenCopyPatchCount+=teenCopyMatches;
+        t=t.split(teenCopyFrom).join("abonan el 70% de la tarifa.");
+      }
+
+      const dateDefaultsPattern=/,\[i,a\]=\(0,N\.useState\)\(`\d{4}-\d{2}-\d{2}`\),\[o,s\]=\(0,N\.useState\)\(`\d{4}-\d{2}-\d{2}`\),/g;
+      t=t.replace(dateDefaultsPattern,()=>{
+        dateDefaultsPatchCount+=1;
+        return ',[i,a]=(0,N.useState)(()=>bi(yi(new Date),1)),[o,s]=(0,N.useState)(()=>bi(yi(new Date),8)),';
+      });
+
+      const checkInField='type:`date`,value:i,onChange:e=>ue(e.target.value)';
+      const checkOutField='type:`date`,min:i?bi(i,7):void 0,value:o,onChange:e=>s(e.target.value)';
+      const checkInMatches=t.split(checkInField).length-1;
+      const checkOutMatches=t.split(checkOutField).length-1;
+      dateInputPatchCount+=checkInMatches+checkOutMatches;
+      t=t.split(checkInField).join('type:`date`,min:yi(new Date),value:i,onInput:e=>ue(e.target.value)');
+      t=t.split(checkOutField).join('type:`date`,min:i?bi(i,7):void 0,value:o,onInput:e=>s(e.target.value)');
     }
 
     await fs.writeFile(f,t);
@@ -193,6 +224,18 @@ if(pricingFeePatchCount!==1){
 if(exactTotalPatchCount!==1){
   throw new Error(`Pricing hotfix expected 1 rounded-total match, found ${exactTotalPatchCount}`);
 }
+if(teenRatePatchCount!==1){
+  throw new Error(`Teen-rate hotfix expected 1 pricing match, found ${teenRatePatchCount}`);
+}
+if(teenCopyPatchCount!==1){
+  throw new Error(`Teen-rate hotfix expected 1 copy match, found ${teenCopyPatchCount}`);
+}
+if(dateDefaultsPatchCount!==1){
+  throw new Error(`Date hotfix expected 1 default-date match, found ${dateDefaultsPatchCount}`);
+}
+if(dateInputPatchCount!==2){
+  throw new Error(`Date hotfix expected 2 input matches, found ${dateInputPatchCount}`);
+}
 
 // Mobile and scrolling hotfixes are kept separate from the mirrored CSS so
 // they remain easy to audit and do not depend on a generated asset hash.
@@ -204,6 +247,15 @@ html {
 body {
   overflow-x: clip !important;
   overscroll-behavior-y: none;
+}
+.quote-shell input[type="date"],
+.quote-shell input[type="number"],
+.quote-shell button[role="combobox"] {
+  position: relative;
+  z-index: 1;
+  min-height: 48px;
+  pointer-events: auto !important;
+  touch-action: manipulation;
 }
 .photo-gallery-viewport,
 .photo-gallery-slide,
